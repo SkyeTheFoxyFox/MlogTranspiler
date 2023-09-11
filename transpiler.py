@@ -4,7 +4,7 @@ ENABLE_SCOPE = True
 
 def ERROR(message):
 	print("ERROR:", message)
-	input_code.close()
+	input_file.close()
 	sys.exit()
 
 def WARNING(message):
@@ -51,6 +51,17 @@ def parse_line(input):
 		ERROR("string not closed")
 	return(output)
 
+def handle_basic_instructions(input, output, include_list):
+	for line in input:
+		parsed_line = parse_line(line)
+		match parsed_line[0]:
+			case "arr":
+				instruction_arr(parsed_line, output)
+			case "include":
+				instruction_include(parsed_line, include_list)
+			case _:
+				output.append(line)
+
 def instruction_arr(line, output): 
 	match line[1]: #arr define UnitArray 32
 		case "define":
@@ -78,7 +89,6 @@ def instruction_arr(line, output):
 def is_variable(instruction, value, index):
 	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value))
 	
-
 def is_instruction_value(ins, index):
 	match(index):
 		case 0:
@@ -93,7 +103,6 @@ def is_instruction_value(ins, index):
 			return(ins in ["radar","uradar"])
 		case _:
 			return(False)
-
 
 def is_number(value):
 	match(value[0:1]):
@@ -136,6 +145,9 @@ def macro_split(input, macros, macro_indices, output):
 			macros[current_macro].append(output_line)
 
 		elif(parsed_line[0] == "mac" and parsed_line[1] == "define"):
+			if(parsed_line[2] in macros):
+				ERROR("Macro \"" + parsed_line[2] + "\" already defined")
+
 			is_macro = True
 			current_macro = parsed_line[2]
 			macros[current_macro] = []
@@ -180,55 +192,69 @@ def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output
 	macro_indices[macro] = macro_indices[macro] + 1
 	chain_list.pop()
 
+def handle_macros(input, macro_indices, macro_list, output):
+	chain_list = []
+
+	for line in input:
+		parsed_line = parse_line(line)
+		if(parsed_line[0] == "mac"):
+			macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output)
+		else:
+			output.append(line)
+
+def instruction_include(line, include_list):
+	file_loc = sys.argv[1][:sys.argv[1].rfind("/")+1] + line[1]
+	if(file_loc in include_list):
+		WARNING("File \"" + file_loc + "\" already included... skipping")
+	else:
+		include_list.append(file_loc)
+
+def include_file(file_loc, macro_list, macro_indices, include_list):
+	file = open(file_loc, "r")
+	output_code = []
+
+	handle_basic_instructions(parse_file(file), output_code, include_list)
+	input_code = output_code
+	output_code = []
+	macro_split(input_code, macro_list, macro_indices, output_code)
+
+def handle_includes(include_list, macro_list, macro_indices):
+	file_index = 1
+	while(True):
+		if(file_index >= len(include_list)):
+			return
+		file = include_list[file_index]
+		include_file(file, macro_list, macro_indices, include_list)
+		file_index += 1
+
+
 
 
 input_file = open(sys.argv[1], "r")
 
 output_code = []
+include_list = [sys.argv[1]]
 
-for line in parse_file(input_file):
-	#print(line)
-	parsed_line = parse_line(line)
-	match parsed_line[0]:
-		case "arr":
-			instruction_arr(parsed_line, output_code)
-		case _:
-			output_code.append(line)
+handle_basic_instructions(parse_file(input_file), output_code, include_list)
 
 input_code = output_code
 output_code = []
 macro_list = {}
 macro_indices = {}
-chain_list = []
 
 macro_split(input_code, macro_list, macro_indices, output_code)
+
+handle_includes(include_list, macro_list, macro_indices)
 
 input_code = output_code
 output_code = []
 
-for line in input_code:
-	parsed_line = parse_line(line)
-	if(parsed_line[0] == "mac"):
-		macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output_code)
-	else:
-		output_code.append(line)
+handle_macros(input_code, macro_indices, macro_list, output_code)
 
-#while(True):
-#	output_code, macro_name, macro_data = macro_define_search(output_code)
-#	if(macro_name == ""):
-#		break
-#	print("working on macro " + macro_name)
-#	output_code = macro_call_search(output_code, macro_name, macro_data)
-#for line in output_code:
-#	parsed_line = parse_line(line)
-#	if(parsed_line[0] == "mac"):
-#		ERROR("Unknown macro \"" + parsed_line[1] + '"')
 
 file_output = ""
 for i in output_code:
 	file_output = file_output + i.strip("\t ") + "\n"
-
-
 
 output_file = open(sys.argv[2], "w")
 output_file.write(file_output)

@@ -26,3 +26,30 @@ end
 
 arr define TestArray 25 # 25 is the size of the array
 ```
+
+include allows you to include another file, and use it's macros
+example:
+```
+include test_lib.sfmlog
+
+set a 1
+set b 6
+mac TestMacro result a b
+print result
+printflush display1
+```
+test_lib.sfmlog
+```
+include lib2.sfmlog
+
+mac define TestMacro out a b
+    op add out a b
+    mac Mac2 out
+mac end
+```
+lib2.sfmlog
+```
+mac define Mac2 a
+    op pow a a 2
+mac end
+```

@@ -2,7 +2,7 @@ An mlog transpiler with support for macros and simple counter arrays.
 
 The program takes 2 arguments, the file to tranpiler, and the file to write it out to.
 
-Macros are like functions, you define them with `mac define Name arg1 ...` then your code, then a `mac end`. Macros can be called with `mac Name arg1 ...`. Macros have dedicated scope, to interact with variables outside the macro use `$variable`.
+Macros are like functions, you define them with `mac define Name arg1 ...` then your code, then a `mac end`. Macros can be called with `mac Name arg1 ...`. They also have individual scope, to interact with variables outside the macro use `$variable`.
 
 The `include` instruction allows you to include another file, and use it's macros. included macros will also apply their own includes. To include a file use `include filePath`, the file path is relative to the directory of the initial file.
 

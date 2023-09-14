@@ -176,7 +176,9 @@ def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output
 			elif(parsed_line[0] == "jump" and index == 1):
 				output_line = output_line + "_" + macro + "_" + str(macro_indices[macro]) + "_" + word + " "
 			else:
-				if(is_variable(parsed_line[0], word, index) and ENABLE_SCOPE):
+				if(word.startswith("$")):
+					output_line = output_line + word[1:] + " "
+				elif(is_variable(parsed_line[0], word, index) and ENABLE_SCOPE):
 					output_line = output_line + "_" + macro + "_" + str(macro_indices[macro]) + "_" + word + " "
 				else:
 					output_line = output_line + word + " "

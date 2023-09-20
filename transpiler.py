@@ -1,6 +1,15 @@
 import sys
 
 ENABLE_SCOPE = True
+COPY_CODE = False
+NO_COPY = False
+SOURCE_FILE = ""
+OUTPUT_FILE = ""
+
+try:
+    import pyperclip
+except ImportError:
+    NO_COPY = True
 
 def ERROR(message):
 	print("ERROR:", message)
@@ -9,6 +18,30 @@ def ERROR(message):
 
 def WARNING(message):
 	print("WARNING:", message)
+
+def handle_args(args):
+	i = 0
+	while(i < len(args)):
+		arg = args[i]
+		match arg:
+			case "-src":
+				global SOURCE_FILE
+				i += 1
+				SOURCE_FILE = args[i]
+			case "-out":
+				global OUTPUT_FILE
+				i += 1
+				OUTPUT_FILE = args[i]
+			case "-copy":
+				if(NO_COPY == False):
+					global COPY_CODE
+					COPY_CODE = True
+				else:
+					WARNING("Install pyperclip to use -copy")
+			case "-no_scope":
+				global ENABLE_SCOPE
+				ENABLE_SCOPE = False
+		i += 1
 
 def parse_file(input):
 	text = input.read()
@@ -51,14 +84,16 @@ def parse_line(input):
 		ERROR("string not closed")
 	return(output)
 
-def handle_basic_instructions(input, output, include_list):
+def handle_basic_instructions(input, output, include_list, current_file):
 	for line in input:
 		parsed_line = parse_line(line)
 		match parsed_line[0]:
 			case "arr":
 				instruction_arr(parsed_line, output)
 			case "include":
-				instruction_include(parsed_line, include_list)
+				instruction_include(parsed_line, include_list, current_file)
+			case "swrite":
+				instruction_swrite(parsed_line, output)
 			case _:
 				output.append(line)
 
@@ -85,6 +120,21 @@ def instruction_arr(line, output):
 			output.append("set " + line[3] + " _" + line[2] + "_output_")
 		case _:
 			ERROR("unknown instruction \"arr " + line[1] + "\"")
+
+def instruction_swrite(line, output):
+	if(is_number(line[3])):
+		i = int(line[3])
+		for char in line[1][1:(len(line[1])-1)]:
+			output.append("write " + str(ord(char)) + " " + line[2] + " " + str(i))
+			i += 1
+		output.append("write 0 " + line[2] + " " + str(i))
+	else:
+		output.append("write " + str(ord(line[1][1])) + " " + line[2] + " " + str(line[3]))
+		output.append("op add _swrite_index " + str(line[3]) + " 1")
+		for char in line[1][2:(len(line[1])-1)]:
+			output.append("write " + str(ord(char)) + " " + line[2] + " _swrite_index")
+			output.append("op add _swrite_index _swrite_index 1")
+		output.append("write 0 " + line[2] + " _swrite_index")
 
 def is_variable(instruction, value, index):
 	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value))
@@ -204,8 +254,8 @@ def handle_macros(input, macro_indices, macro_list, output):
 		else:
 			output.append(line)
 
-def instruction_include(line, include_list):
-	file_loc = sys.argv[1][:sys.argv[1].rfind("/")+1] + line[1]
+def instruction_include(line, include_list, current_file):
+	file_loc = current_file[:current_file.rfind("/")+1] + line[1]
 	if(file_loc in include_list):
 		WARNING("File \"" + file_loc + "\" already included... skipping")
 	else:
@@ -215,7 +265,7 @@ def include_file(file_loc, macro_list, macro_indices, include_list):
 	file = open(file_loc, "r")
 	output_code = []
 
-	handle_basic_instructions(parse_file(file), output_code, include_list)
+	handle_basic_instructions(parse_file(file), output_code, include_list, file_loc)
 	input_code = output_code
 	output_code = []
 	macro_split(input_code, macro_list, macro_indices, output_code)
@@ -231,13 +281,16 @@ def handle_includes(include_list, macro_list, macro_indices):
 
 
 
+handle_args(sys.argv[1:])
 
-input_file = open(sys.argv[1], "r")
+input_file = open(SOURCE_FILE, "r")
 
 output_code = []
-include_list = [sys.argv[1]]
+include_list = [SOURCE_FILE]
 
-handle_basic_instructions(parse_file(input_file), output_code, include_list)
+
+
+handle_basic_instructions(parse_file(input_file), output_code, include_list, SOURCE_FILE)
 
 input_code = output_code
 output_code = []
@@ -258,10 +311,13 @@ file_output = ""
 for i in output_code:
 	file_output = file_output + i.strip("\t ") + "\n"
 
-output_file = open(sys.argv[2], "w")
-output_file.write(file_output)
+if(OUTPUT_FILE != ""):
+	output_file = open(OUTPUT_FILE, "w")
+	output_file.write(file_output)
+	output_file.close()
+if(COPY_CODE == True):
+	pyperclip.copy(file_output)
 
 print("File transpiled successfully")
 
 input_file.close()
-output_file.close()

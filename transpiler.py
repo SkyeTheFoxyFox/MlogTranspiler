@@ -19,6 +19,10 @@ def ERROR(message):
 def WARNING(message):
 	print("WARNING:", message)
 
+def arg_len_check(input, length):
+	if(len(input) < (length + 1)):
+		ERROR("Instruction \"%s\" expected more arguments" % input[0])
+
 def handle_args(args):
 	i = 0
 	while(i < len(args)):
@@ -102,22 +106,29 @@ def handle_basic_instructions(input, output, include_list, const_list, current_f
 				output.append(line)
 
 def instruction_arr(line, output): 
+	arg_len_check(line, 3)
 	match line[1]: #arr define UnitArray 32
 		case "define":
 			output.append(line[2] + "_read_:")
 			output.append("op add _" + line[2] + "_jump_pointer_ _" + line[2] + "_jump_pointer_ 1")
 			output.append(line[2] + "_write_:")
 			output.append("op add @counter _" + line[2] + "_jump_pointer_ @counter")
-			for i in range(int(line[3])):
+			try:
+				arr_len = int(line[3])
+			except ValueError:
+				ERROR("Instruction \"arr define\" expected integer length")
+			for i in range():
 				output.append("set _" + line[2] + "_var" + str(i) + " _" + line[2] + "_input_")
 				output.append("set _" + line[2] + "_output_ _" + line[2] + "_var" + str(i))
 				output.append("set @counter _" + line[2] + "_return_pointer_")
 		case "write":
+			arg_len_check(line, 4)
 			output.append("set _" + line[2] + "_input_ " + line[3])
 			output.append("op mul _" + line[2] + "_jump_pointer_ " + line[4] + " 3")
 			output.append("op add _" + line[2] + "_return_pointer_ @counter 1")
 			output.append("jump " + line[2] + "_write_ always")
 		case "read":
+			arg_len_check(line, 4)
 			output.append("op mul _" + line[2] + "_jump_pointer_ " + line[4] + " 3")
 			output.append("op add _" + line[2] + "_return_pointer_ @counter 1")
 			output.append("jump " + line[2] + "_read_ always")
@@ -126,8 +137,14 @@ def instruction_arr(line, output):
 			ERROR("unknown instruction \"arr " + line[1] + "\"")
 
 def instruction_swrite(line, output):
+	arg_len_check(line, 3)
 	if(is_number(line[3])):
-		i = int(line[3])
+		try:
+			i = int(line[3])
+		except ValueError:
+			ERROR("Instruction \"swrite\" expected integer index")
+		if(not is_string(line[1])):
+			ERROR("Instruction \"swrite\" expected string")
 		for char in line[1][1:(len(line[1])-1)]:
 			output.append("write " + str(ord(char)) + " " + line[2] + " " + str(i))
 			i += 1
@@ -141,11 +158,18 @@ def instruction_swrite(line, output):
 		output.append("write 0 " + line[2] + " _swrite_index")
 
 def instruction_const(line, output, const_list):
+	arg_len_check(line, 1)
+	var = line[1]
+	if(is_string(var) or is_enum(var) or is_number(var)):
+		ERROR("Invalid constant '%s'" % var)
+	if(is_const(var, const_list)):
+		ERROR("Attempted to redefine constant \"%s\"" % var)
 	const_list.append(line[1])
 	if(len(line) > 2):
 		output.append("set " + line[1] + " " + line[2])
 
 def instruction_printf(line, output):
+	arg_len_check(line, 1)
 	format_string = line[1][1:len(line[1])-1]
 	current_var = 2
 	temp_string = ""
@@ -154,7 +178,7 @@ def instruction_printf(line, output):
 		char = format_string[i]
 		if(char == '%' and format_string[i+1] == 'd'):
 			if(current_var >= len(line)):
-				ERROR("Not enough variables for printf")
+				ERROR("Instruction \"printf\" expected more variables")
 			if(temp_string != ""):
 				output.append('print "%s"' % temp_string)
 			temp_string = ""
@@ -188,13 +212,16 @@ def is_instruction_value(ins, index):
 			return(False)
 
 def is_number(value):
-	match(value[0:1]):
+	match(value[0:2]):
 		case "0x":
 			return(string_contains(value[2:], "0123456789abcdefABCDEF"))
 		case "0b":
 			return(string_contains(value[2:], "01"))
 		case _:
-			return(string_contains(value, "0123456789.-"))
+			if(value.count("e") == 1):
+				return(string_contains(value, "0123456789-e"))
+			else:
+				return(string_contains(value, "0123456789.-"))
 
 def string_contains(string, list):
 	string_len = len(string)
@@ -291,6 +318,7 @@ def handle_macros(input, macro_indices, macro_list, output, const_list):
 			output.append(line)
 
 def instruction_include(line, include_list, current_file):
+	arg_len_check(line, 1)
 	file_loc = current_file[:current_file.rfind("/")+1] + line[1]
 	if(file_loc in include_list):
 		WARNING("File \"" + file_loc + "\" already included... skipping")
@@ -298,7 +326,10 @@ def instruction_include(line, include_list, current_file):
 		include_list.append(file_loc)
 
 def include_file(file_loc, macro_list, macro_indices, include_list, const_list):
-	file = open(file_loc, "r")
+	try:
+		file = open(file_loc, "r")
+	except OSError:
+		ERROR("Can't find file \"%s\"" % file_loc)
 	output_code = []
 
 	handle_basic_instructions(parse_file(file), output_code, include_list, const_list, file_loc)
@@ -318,8 +349,10 @@ def handle_includes(include_list, macro_list, macro_indices, const_list):
 
 
 handle_args(sys.argv[1:])
-
-input_file = open(SOURCE_FILE, "r")
+try:
+	input_file = open(SOURCE_FILE, "r")
+except OSError:
+	ERROR("Can't find file \"%s\"" % SOURCE_FILE)
 
 output_code = []
 include_list = [SOURCE_FILE]
@@ -349,9 +382,12 @@ for i in output_code:
 	file_output = file_output + i.strip("\t ") + "\n"
 
 if(OUTPUT_FILE != ""):
-	output_file = open(OUTPUT_FILE, "w")
-	output_file.write(file_output)
-	output_file.close()
+	try:
+		output_file = open(OUTPUT_FILE, "w")
+		output_file.write(file_output)
+		output_file.close()
+	except OSError:
+		ERROR("Can't find file \"%s\"" % OUTPUT_FILE)
 if(COPY_CODE == True):
 	pyperclip.copy(file_output)
 

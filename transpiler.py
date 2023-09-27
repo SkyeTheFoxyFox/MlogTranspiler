@@ -84,7 +84,7 @@ def parse_line(input):
 		ERROR("string not closed")
 	return(output)
 
-def handle_basic_instructions(input, output, include_list, current_file):
+def handle_basic_instructions(input, output, include_list, const_list, current_file):
 	for line in input:
 		parsed_line = parse_line(line)
 		match parsed_line[0]:
@@ -94,6 +94,10 @@ def handle_basic_instructions(input, output, include_list, current_file):
 				instruction_include(parsed_line, include_list, current_file)
 			case "swrite":
 				instruction_swrite(parsed_line, output)
+			case "const":
+				instruction_const(parsed_line, output, const_list)
+			case "printf":
+				instruction_printf(parsed_line, output)
 			case _:
 				output.append(line)
 
@@ -136,8 +140,37 @@ def instruction_swrite(line, output):
 			output.append("op add _swrite_index _swrite_index 1")
 		output.append("write 0 " + line[2] + " _swrite_index")
 
-def is_variable(instruction, value, index):
-	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value))
+def instruction_const(line, output, const_list):
+	const_list.append(line[1])
+	if(len(line) > 2):
+		output.append("set " + line[1] + " " + line[2])
+
+def instruction_printf(line, output):
+	format_string = line[1][1:len(line[1])-1]
+	current_var = 2
+	temp_string = ""
+	i = 0
+	while(True):
+		char = format_string[i]
+		if(char == '%' and format_string[i+1] == 'd'):
+			if(current_var >= len(line)):
+				ERROR("Not enough variables for printf")
+			if(temp_string != ""):
+				output.append('print "%s"' % temp_string)
+			temp_string = ""
+			output.append("print %s" % line[current_var])
+			current_var += 1
+			i += 1
+		else:
+			temp_string += char
+		i += 1
+		if(i >= len(format_string)):
+			break
+	if(temp_string != ""):
+		output.append('print "%s"' % temp_string)
+
+def is_variable(instruction, value, index, const_list):
+	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value) and not is_const(value, const_list))
 	
 def is_instruction_value(ins, index):
 	match(index):
@@ -176,6 +209,9 @@ def is_string(value):
 def is_enum(value):
 	return(value[0] == '@')
 
+def is_const(value, const_list):
+	return(value in const_list)
+
 def macro_split(input, macros, macro_indices, output):
 	is_macro = False
 	current_macro = ""
@@ -207,7 +243,7 @@ def macro_split(input, macros, macro_indices, output):
 		else:
 			output.append(line)
 
-def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output):
+def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output, const_list):
 	chain_list.append(macro)
 	if(macro not in macro_list):
 		ERROR("macro \"" + macro + "\" undefined")
@@ -220,22 +256,22 @@ def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output
 				arg_index = int(word[8:])
 				if(len(arguments) <= arg_index):
 					ERROR("Macro \"" + macro + "\" needs more arguments")
-				output_line = output_line + arguments[arg_index] + " "
+				output_line += arguments[arg_index] + " "
 			elif(word.endswith(":")):
-				output_line = output_line + "_" + macro + "_" + str(macro_indices[macro]) + "_" + word
+				output_line += "_%s_%d_%s" % (macro, macro_indices[macro], word)
 			elif(parsed_line[0] == "jump" and index == 1):
-				output_line = output_line + "_" + macro + "_" + str(macro_indices[macro]) + "_" + word + " "
+				output_line += "_%s_%d_%s " % (macro, macro_indices[macro], word)
 			else:
 				if(word.startswith("$")):
-					output_line = output_line + word[1:] + " "
-				elif(is_variable(parsed_line[0], word, index) and ENABLE_SCOPE):
-					output_line = output_line + "_" + macro + "_" + str(macro_indices[macro]) + "_" + word + " "
+					output_line += word[1:] + " "
+				elif(is_variable(parsed_line[0], word, index, const_list) and ENABLE_SCOPE):
+					output_line += "_%s_%d_%s " % (macro, macro_indices[macro], word)
 				else:
-					output_line = output_line + word + " "
+					output_line += word + " "
 		parsed_line = parse_line(output_line.strip("\t "))
 		if(parsed_line[0] == "mac"):
 			if(parsed_line[1] not in chain_list):
-				macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output)
+				macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output, const_list)
 			else:
 				WARNING("macro \"" + parsed_line[1] + "\" tried to call itself... skipping")
 		else:
@@ -244,13 +280,13 @@ def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output
 	macro_indices[macro] = macro_indices[macro] + 1
 	chain_list.pop()
 
-def handle_macros(input, macro_indices, macro_list, output):
+def handle_macros(input, macro_indices, macro_list, output, const_list):
 	chain_list = []
 
 	for line in input:
 		parsed_line = parse_line(line)
 		if(parsed_line[0] == "mac"):
-			macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output)
+			macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output, const_list)
 		else:
 			output.append(line)
 
@@ -261,22 +297,22 @@ def instruction_include(line, include_list, current_file):
 	else:
 		include_list.append(file_loc)
 
-def include_file(file_loc, macro_list, macro_indices, include_list):
+def include_file(file_loc, macro_list, macro_indices, include_list, const_list):
 	file = open(file_loc, "r")
 	output_code = []
 
-	handle_basic_instructions(parse_file(file), output_code, include_list, file_loc)
+	handle_basic_instructions(parse_file(file), output_code, include_list, const_list, file_loc)
 	input_code = output_code
 	output_code = []
 	macro_split(input_code, macro_list, macro_indices, output_code)
 
-def handle_includes(include_list, macro_list, macro_indices):
+def handle_includes(include_list, macro_list, macro_indices, const_list):
 	file_index = 1
 	while(True):
 		if(file_index >= len(include_list)):
 			return
 		file = include_list[file_index]
-		include_file(file, macro_list, macro_indices, include_list)
+		include_file(file, macro_list, macro_indices, const_list, include_list)
 		file_index += 1
 
 
@@ -287,10 +323,11 @@ input_file = open(SOURCE_FILE, "r")
 
 output_code = []
 include_list = [SOURCE_FILE]
+const_list = ["true", "false", "null"]
 
 
 
-handle_basic_instructions(parse_file(input_file), output_code, include_list, SOURCE_FILE)
+handle_basic_instructions(parse_file(input_file), output_code, include_list, const_list, SOURCE_FILE)
 
 input_code = output_code
 output_code = []
@@ -299,12 +336,12 @@ macro_indices = {}
 
 macro_split(input_code, macro_list, macro_indices, output_code)
 
-handle_includes(include_list, macro_list, macro_indices)
+handle_includes(include_list, macro_list, macro_indices, const_list)
 
 input_code = output_code
 output_code = []
 
-handle_macros(input_code, macro_indices, macro_list, output_code)
+handle_macros(input_code, macro_indices, macro_list, output_code, const_list)
 
 
 file_output = ""

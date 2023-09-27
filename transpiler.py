@@ -116,7 +116,7 @@ def instruction_arr(line, output):
 			try:
 				arr_len = int(line[3])
 			except ValueError:
-				ERROR("Instruction \"arr define\" expected integer length")
+				ERROR("Instruction \"arr define\" expected integer length, got \"%s\"" % line[3])
 			for i in range():
 				output.append("set _" + line[2] + "_var" + str(i) + " _" + line[2] + "_input_")
 				output.append("set _" + line[2] + "_output_ _" + line[2] + "_var" + str(i))
@@ -138,11 +138,13 @@ def instruction_arr(line, output):
 
 def instruction_swrite(line, output):
 	arg_len_check(line, 3)
+	if(not is_string(line[1])):
+		ERROR("Instruction \"swrite\" expected string")
 	if(is_number(line[3])):
 		try:
 			i = int(line[3])
 		except ValueError:
-			ERROR("Instruction \"swrite\" expected integer index")
+			ERROR("Instruction \"swrite\" expected integer index, got \"%s\"" % line[3])
 		if(not is_string(line[1])):
 			ERROR("Instruction \"swrite\" expected string")
 		for char in line[1][1:(len(line[1])-1)]:
@@ -170,6 +172,8 @@ def instruction_const(line, output, const_list):
 
 def instruction_printf(line, output):
 	arg_len_check(line, 1)
+	if(not is_string(line[1])):
+		ERROR("Instruction \"printf\" expected string, got \"%s\"" % line[1])
 	format_string = line[1][1:len(line[1])-1]
 	current_var = 2
 	temp_string = ""

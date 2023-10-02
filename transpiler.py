@@ -64,29 +64,34 @@ def parse_file(input):
 	return(text)
 
 def parse_line(input):
-	text = input.split(" ", input.count(" "))
-	in_string = False
+	text = split_line(input)
 	output = []
 	for i in text:
 		if(i.startswith('#', 0, len(i))):
 			break
-		start = i.startswith('"', 0, len(i))
-		end = i.endswith('"', 0, len(i))
-		if(start and not end):
-			if(in_string == True):
-				ERROR("string not closed")
-			in_string = True
-		if(end):
-			in_string = False
-
-		if(in_string == True and start == False or end == True and start != True):
-			output[len(output)-1] = output[len(output)-1] + " " + i
-		else:
-			output.append(i)
-
-	if(in_string == True):
-		ERROR("string not closed")
+		output.append(i)
 	return(output)
+
+def split_line(line):
+	is_string = False
+	line_out = []
+	word_output = ""
+	for char in line:
+		if(char == '"' and is_string == False):
+			is_string = True
+			word_output += char
+		elif(char == '"' and is_string == True):
+			is_string = False
+			word_output += char
+		elif(char == ' ' and is_string == False):
+			line_out.append(word_output)
+			word_output = ""
+		else:
+			word_output += char
+	if(is_string == True):
+		ERROR("string not closed")
+	line_out.append(word_output)
+	return(line_out)
 
 def handle_basic_instructions(input, output, include_list, const_list, current_file):
 	for line in input:
@@ -140,24 +145,46 @@ def instruction_swrite(line, output):
 	arg_len_check(line, 3)
 	if(not is_string(line[1])):
 		ERROR("Instruction \"swrite\" expected string")
+	string = string_esc_parse(line[1])
 	if(is_number(line[3])):
 		try:
 			i = int(line[3])
 		except ValueError:
 			ERROR("Instruction \"swrite\" expected integer index, got \"%s\"" % line[3])
-		if(not is_string(line[1])):
+		if(not is_string(string)):
 			ERROR("Instruction \"swrite\" expected string")
-		for char in line[1][1:(len(line[1])-1)]:
+		for char in string[1:(len(string)-1)]:
 			output.append("write " + str(ord(char)) + " " + line[2] + " " + str(i))
 			i += 1
 		output.append("write 0 " + line[2] + " " + str(i))
 	else:
-		output.append("write " + str(ord(line[1][1])) + " " + line[2] + " " + str(line[3]))
+		output.append("write " + str(ord(string[1])) + " " + line[2] + " " + str(line[3]))
 		output.append("op add _swrite_index " + str(line[3]) + " 1")
-		for char in line[1][2:(len(line[1])-1)]:
+		for char in string[2:(len(string)-1)]:
 			output.append("write " + str(ord(char)) + " " + line[2] + " _swrite_index")
 			output.append("op add _swrite_index _swrite_index 1")
 		output.append("write 0 " + line[2] + " _swrite_index")
+
+def string_esc_parse(string):
+	output = ""
+	i = 0
+	while True:
+		char = string[i]
+		if(char == '\\' and i+1 < len(string)):
+			match string[i+1]:
+				case 'n':
+					output += '\n'
+				case '\\':
+					output += '\\'
+				case _:
+					ERROR("Invalid escape sequence \"\\%c\"" % string[i+1])
+			i += 1
+		else:
+			output += char
+		i += 1
+		if(i >= len(string)):
+			break
+	return(output)
 
 def instruction_const(line, output, const_list):
 	arg_len_check(line, 1)
@@ -180,7 +207,7 @@ def instruction_printf(line, output):
 	i = 0
 	while(True):
 		char = format_string[i]
-		if(char == '%' and format_string[i+1] == 'd'):
+		if(char == '%' and format_string[i+1] in "dsfc"):
 			if(current_var >= len(line)):
 				ERROR("Instruction \"printf\" expected more variables")
 			if(temp_string != ""):
@@ -205,9 +232,9 @@ def is_instruction_value(ins, index):
 		case 0:
 			return(ins[len(ins)-1] != ':')
 		case 1:
-			return(ins in ["op","draw","radar","control","lookup","ucontrol","uradar","ulocate","getblock","setblock","status","setrule","message","cutscene","fetch","effect","mac"])
+			return(ins in ["op","draw","radar","control","lookup","ucontrol","uradar","ulocate","getblock","setblock","status","setrule","message","cutscene","fetch","effect","setmarker","mac"])
 		case 2:
-			return(ins in ["jump","radar","uradar","ulocate","status"])
+			return(ins in ["jump","radar","uradar","ulocate","status","makemarker"])
 		case 3:
 			return(ins in ["radar","uradar"])
 		case 4:

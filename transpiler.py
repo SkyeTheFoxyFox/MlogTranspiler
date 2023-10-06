@@ -51,15 +51,13 @@ def parse_file(input):
 	text = input.read()
 
 	text = text.split("\n", text.count("\n"))
-	#print("stripping lines")
 	for i in range(len(text)-1):
 		text[i] = text[i].strip("\t ")
-	#print("clearing lines")
-	for i in range(text.count("")):
-		text.remove("") 
-	for i in range(len(text)-1, 0, -1):
+	for i in range(len(text)-1, -1, -1):
 		if(text[i].startswith('#')):
-			#print("clearing comment line " + str(i))
+			del(text[i])
+	for i in range(len(text)-1, -1, -1):
+		if(text[i] == ""):
 			del(text[i])
 	return(text)
 

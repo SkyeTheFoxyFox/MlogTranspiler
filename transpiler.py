@@ -68,6 +68,8 @@ def parse_line(input):
 		if(i.startswith('#', 0, len(i))):
 			break
 		output.append(i)
+	for i in range(output.count("")):
+		output.remove("")
 	return(output)
 
 def split_line(line):
@@ -185,15 +187,13 @@ def string_esc_parse(string):
 	return(output)
 
 def instruction_const(line, output, const_list):
-	arg_len_check(line, 1)
+	arg_len_check(line, 2)
 	var = line[1]
 	if(is_string(var) or is_enum(var) or is_number(var)):
 		ERROR("Invalid constant '%s'" % var)
-	if(is_const(var, const_list)):
+	if(is_def(var, const_list)):
 		ERROR("Attempted to redefine constant \"%s\"" % var)
-	const_list.append(line[1])
-	if(len(line) > 2):
-		output.append("set " + line[1] + " " + line[2])
+	const_list[line[1]] = line[2]
 
 def instruction_printf(line, output):
 	arg_len_check(line, 1)
@@ -223,7 +223,7 @@ def instruction_printf(line, output):
 		output.append('print "%s"' % temp_string)
 
 def is_variable(instruction, value, index, const_list):
-	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value) and not is_const(value, const_list))
+	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value) and not is_const(value) and not is_def(value, const_list))
 	
 def is_instruction_value(ins, index):
 	match(index):
@@ -249,6 +249,8 @@ def is_number(value):
 		case _:
 			if(value.count("e") == 1):
 				return(string_contains(value, "0123456789-e"))
+			elif(value[0] == '%'):
+				return(string_contains(value[1:], "0123456789abcdefABCDEF"))
 			else:
 				return(string_contains(value, "0123456789.-"))
 
@@ -265,7 +267,10 @@ def is_string(value):
 def is_enum(value):
 	return(value[0] == '@')
 
-def is_const(value, const_list):
+def is_const(value):
+	return(value in ["true", "false", "null"])
+
+def is_def(value, const_list):
 	return(value in const_list)
 
 def macro_split(input, macros, macro_indices, output):
@@ -360,7 +365,6 @@ def include_file(file_loc, macro_list, macro_indices, include_list, const_list):
 	except OSError:
 		ERROR("Can't find file \"%s\"" % file_loc)
 	output_code = []
-
 	handle_basic_instructions(parse_file(file), output_code, include_list, const_list, file_loc)
 	input_code = output_code
 	output_code = []
@@ -372,10 +376,19 @@ def handle_includes(include_list, macro_list, macro_indices, const_list):
 		if(file_index >= len(include_list)):
 			return
 		file = include_list[file_index]
-		include_file(file, macro_list, macro_indices, const_list, include_list)
+		include_file(file, macro_list, macro_indices, include_list, const_list)
 		file_index += 1
 
-
+def handle_const(input, output, const_list):
+	for line in input:
+		parsed_line = parse_line(line)
+		output_line = ""
+		for word in parsed_line:
+			if word in const_list:
+				output_line += const_list[word] + " "
+			else:
+				output_line += word + " "
+		output.append(output_line)
 
 handle_args(sys.argv[1:])
 try:
@@ -385,7 +398,7 @@ except OSError:
 
 output_code = []
 include_list = [SOURCE_FILE]
-const_list = ["true", "false", "null"]
+const_list = {}
 
 
 
@@ -405,10 +418,16 @@ output_code = []
 
 handle_macros(input_code, macro_indices, macro_list, output_code, const_list)
 
+input_code = output_code
+output_code = []
+
+handle_const(input_code, output_code, const_list)
 
 file_output = ""
 for i in output_code:
 	file_output = file_output + i.strip("\t ") + "\n"
+
+
 
 if(OUTPUT_FILE != ""):
 	try:

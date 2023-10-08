@@ -6,6 +6,9 @@ NO_COPY = False
 SOURCE_FILE = ""
 OUTPUT_FILE = ""
 
+
+global_const_list = {}
+
 try:
     import pyperclip
 except ImportError:
@@ -22,6 +25,13 @@ def WARNING(message):
 def arg_len_check(input, length):
 	if(len(input) < (length + 1)):
 		ERROR("Instruction \"%s\" expected more arguments" % input[0])
+
+def open_file(file_loc):
+	try:
+		file = open(file_loc, "r")
+	except OSError:
+		ERROR("Can't find file \"%s\"" % file_loc)
+	return(file)
 
 def handle_args(args):
 	i = 0
@@ -62,6 +72,7 @@ def parse_file(input):
 	return(text)
 
 def parse_line(input):
+	global global_const_list
 	text = split_line(input)
 	output = []
 	for i in text:
@@ -70,7 +81,24 @@ def parse_line(input):
 		output.append(i)
 	for i in range(output.count("")):
 		output.remove("")
+	temp = output
+	output = []
+	for word in temp:
+		if(word in global_const_list):
+			for const_word in global_const_list[word]:
+				output.append(const_word)
+		else:
+			output.append(word)
 	return(output)
+
+def merge_line(line):
+	output = ""
+	for word in line:
+		output += word + " "
+	return(output.strip(" "))
+
+def update_line(line):
+	return(merge_line(parse_line(line)))
 
 def split_line(line):
 	is_string = False
@@ -93,22 +121,19 @@ def split_line(line):
 	line_out.append(word_output)
 	return(line_out)
 
-def handle_basic_instructions(input, output, include_list, const_list, current_file):
+def handle_basic_instructions(input, output, current_file):
 	for line in input:
 		parsed_line = parse_line(line)
 		match parsed_line[0]:
 			case "arr":
 				instruction_arr(parsed_line, output)
-			case "include":
-				instruction_include(parsed_line, include_list, current_file)
 			case "swrite":
 				instruction_swrite(parsed_line, output)
-			case "const":
-				instruction_const(parsed_line, output, const_list)
 			case "printf":
 				instruction_printf(parsed_line, output)
 			case _:
-				output.append(line)
+				if(parsed_line[0] != "const" and parsed_line[0] != "include"):
+					output.append(update_line(line))
 
 def instruction_arr(line, output): 
 	arg_len_check(line, 3)
@@ -186,15 +211,6 @@ def string_esc_parse(string):
 			break
 	return(output)
 
-def instruction_const(line, output, const_list):
-	arg_len_check(line, 2)
-	var = line[1]
-	if(is_string(var) or is_enum(var) or is_number(var)):
-		ERROR("Invalid constant '%s'" % var)
-	if(is_def(var, const_list)):
-		ERROR("Attempted to redefine constant \"%s\"" % var)
-	const_list[line[1]] = line[2]
-
 def instruction_printf(line, output):
 	arg_len_check(line, 1)
 	if(not is_string(line[1])):
@@ -222,8 +238,8 @@ def instruction_printf(line, output):
 	if(temp_string != ""):
 		output.append('print "%s"' % temp_string)
 
-def is_variable(instruction, value, index, const_list):
-	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value) and not is_const(value) and not is_def(value, const_list))
+def is_variable(instruction, value, index):
+	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value) and not is_const(value))
 	
 def is_instruction_value(ins, index):
 	match(index):
@@ -270,9 +286,6 @@ def is_enum(value):
 def is_const(value):
 	return(value in ["true", "false", "null"])
 
-def is_def(value, const_list):
-	return(value in const_list)
-
 def macro_split(input, macros, macro_indices, output):
 	is_macro = False
 	current_macro = ""
@@ -302,9 +315,9 @@ def macro_split(input, macros, macro_indices, output):
 			arguments = parsed_line[3:]
 
 		else:
-			output.append(line)
+			output.append(update_line(line))
 
-def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output, const_list):
+def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output):
 	chain_list.append(macro)
 	if(macro not in macro_list):
 		ERROR("macro \"" + macro + "\" undefined")
@@ -325,70 +338,81 @@ def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output
 			else:
 				if(word.startswith("$")):
 					output_line += word[1:] + " "
-				elif(is_variable(parsed_line[0], word, index, const_list) and ENABLE_SCOPE):
+				elif(is_variable(parsed_line[0], word, index) and ENABLE_SCOPE):
 					output_line += "_%s_%d_%s " % (macro, macro_indices[macro], word)
 				else:
 					output_line += word + " "
 		parsed_line = parse_line(output_line.strip("\t "))
 		if(parsed_line[0] == "mac"):
 			if(parsed_line[1] not in chain_list):
-				macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output, const_list)
+				macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output)
 			else:
 				WARNING("macro \"" + parsed_line[1] + "\" tried to call itself... skipping")
 		else:
-			output.append(output_line)
+			output.append(update_line(output_line))
 
 	macro_indices[macro] = macro_indices[macro] + 1
 	chain_list.pop()
 
-def handle_macros(input, macro_indices, macro_list, output, const_list):
+def handle_macros(input, macro_indices, macro_list, output):
 	chain_list = []
 
 	for line in input:
 		parsed_line = parse_line(line)
 		if(parsed_line[0] == "mac"):
-			macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output, const_list)
+			macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output)
 		else:
-			output.append(line)
+			output.append(update_line(line))
 
-def instruction_include(line, include_list, current_file):
-	arg_len_check(line, 1)
-	file_loc = current_file[:current_file.rfind("/")+1] + line[1]
-	if(file_loc in include_list):
-		WARNING("File \"" + file_loc + "\" already included... skipping")
-	else:
-		include_list.append(file_loc)
+def find_includes(input, include_list):
+	global SOURCE_FILE
+	found_include_list = [SOURCE_FILE]
+	include_index = 1
+	find_includes_in_file(input, include_list, SOURCE_FILE, found_include_list)
+	if(len(include_list) >= 1):
+		return
+	while True:
+		file = open_file(include_list[include_index])
+		find_includes_in_file(parse_file(file), include_list, include_list[include_index], found_include_list)
+		if(len(included_list) >= include_index):
+			break
+		include_index += 1
 
-def include_file(file_loc, macro_list, macro_indices, include_list, const_list):
-	try:
-		file = open(file_loc, "r")
-	except OSError:
-		ERROR("Can't find file \"%s\"" % file_loc)
-	output_code = []
-	handle_basic_instructions(parse_file(file), output_code, include_list, const_list, file_loc)
-	input_code = output_code
-	output_code = []
-	macro_split(input_code, macro_list, macro_indices, output_code)
-
-def handle_includes(include_list, macro_list, macro_indices, const_list):
-	file_index = 1
-	while(True):
-		if(file_index >= len(include_list)):
-			return
-		file = include_list[file_index]
-		include_file(file, macro_list, macro_indices, include_list, const_list)
-		file_index += 1
-
-def handle_const(input, output, const_list):
-	for line in input:
+def find_includes_in_file(file, include_list, current_file, found_include_list):
+	for line in file:
 		parsed_line = parse_line(line)
-		output_line = ""
-		for word in parsed_line:
-			if word in const_list:
-				output_line += const_list[word] + " "
-			else:
-				output_line += word + " "
-		output.append(output_line)
+		if(parsed_line[0] == "include"):
+			arg_len_check(parsed_line, 1)
+			file_loc = current_file[:current_file.rfind("/")+1] + parsed_line[1]
+			if(file_loc not in include_list):
+				include_list.append(file_loc)
+				found_include_list.append(current_file)
+
+def find_consts(include_list, const_list):
+	for file in include_list:
+		for line in parse_file(open_file(file)):
+			parsed_line = parse_line(line)
+			if(parsed_line[0] == "const"):
+				instruction_const(parsed_line, const_list)
+
+def instruction_const(line, const_list):
+	arg_len_check(line, 2)
+	if(is_string(line[1]) or is_enum(line[1]) or is_number(line[1])):
+		ERROR("Invalid constant '%s'" % line[1])
+	if(line[1] in const_list):
+		ERROR("Attempted to redefine constant \"%s\"" % line[1])
+	const_list[line[1]] = line[2:]
+
+def include_files(file_loc, macro_list, macro_indices, include_list):
+	global SOURCE_FILE
+	for file_loc in include_list:
+		if(file_loc != SOURCE_FILE):
+			file = open_file(file_loc)
+			output_code = []
+			handle_basic_instructions(parse_file(file), output_code, file_loc)
+			input_code = output_code
+			output_code = []
+			macro_split(input_code, macro_list, macro_indices, output_code)
 
 handle_args(sys.argv[1:])
 try:
@@ -400,9 +424,17 @@ output_code = []
 include_list = [SOURCE_FILE]
 const_list = {}
 
+input_code = parse_file(input_file)
+
+find_includes(input_code, include_list)
+
+find_consts(include_list, const_list)
+
+global_const_list = const_list
+
+handle_basic_instructions(input_code, output_code, SOURCE_FILE)
 
 
-handle_basic_instructions(parse_file(input_file), output_code, include_list, const_list, SOURCE_FILE)
 
 input_code = output_code
 output_code = []
@@ -411,17 +443,17 @@ macro_indices = {}
 
 macro_split(input_code, macro_list, macro_indices, output_code)
 
-handle_includes(include_list, macro_list, macro_indices, const_list)
+
+include_files(include_list, macro_list, macro_indices, include_list)
+
+
 
 input_code = output_code
 output_code = []
 
-handle_macros(input_code, macro_indices, macro_list, output_code, const_list)
+handle_macros(input_code, macro_indices, macro_list, output_code)
 
-input_code = output_code
-output_code = []
 
-handle_const(input_code, output_code, const_list)
 
 file_output = ""
 for i in output_code:

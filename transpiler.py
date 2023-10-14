@@ -428,8 +428,6 @@ input_code = parse_file(input_file)
 
 find_includes(input_code, include_list)
 
-print(include_list)
-
 find_consts(include_list, const_list)
 
 global_const_list = const_list

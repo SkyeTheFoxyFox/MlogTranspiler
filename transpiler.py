@@ -369,12 +369,12 @@ def find_includes(input, include_list):
 	found_include_list = [SOURCE_FILE]
 	include_index = 1
 	find_includes_in_file(input, include_list, SOURCE_FILE, found_include_list)
-	if(len(include_list) >= 1):
+	if(len(include_list) <= 1):
 		return
 	while True:
 		file = open_file(include_list[include_index])
 		find_includes_in_file(parse_file(file), include_list, include_list[include_index], found_include_list)
-		if(len(included_list) >= include_index):
+		if(len(include_list) == len(found_include_list)):
 			break
 		include_index += 1
 
@@ -427,6 +427,8 @@ const_list = {}
 input_code = parse_file(input_file)
 
 find_includes(input_code, include_list)
+
+print(include_list)
 
 find_consts(include_list, const_list)
 

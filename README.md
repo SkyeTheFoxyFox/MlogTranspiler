@@ -6,6 +6,8 @@ Macros are like functions, you define them with `mac define Name arg1 ...` then 
 
 `const` will allow you to define words to other things, any instance of the word in the code will be replaced by the defined replacement.
 
+`cop` behaves like `op` but is eveluated at transpile time
+
 The `include` instruction allows you to include another file, and use it's macros. included macros will also apply their own includes. To include a file use `include filePath`, the file path is relative to the directory of the initial file.
 
 Arrays are an easy way to utilize counter arrays, and can be defined with `arr define Name size`. They can be read with `arr read Name output index`, and written to with `arr write Name input index` 

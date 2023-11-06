@@ -1,4 +1,6 @@
 import sys
+import math 
+import random
 
 ENABLE_SCOPE = True
 COPY_CODE = False
@@ -246,7 +248,7 @@ def is_instruction_value(ins, index):
 		case 0:
 			return(ins[len(ins)-1] != ':')
 		case 1:
-			return(ins in ["op","draw","radar","control","lookup","ucontrol","uradar","ulocate","getblock","setblock","status","setrule","message","cutscene","fetch","effect","setmarker","mac"])
+			return(ins in ["op","cop","draw","radar","control","lookup","ucontrol","uradar","ulocate","getblock","setblock","status","setrule","message","cutscene","fetch","effect","setmarker","mac"])
 		case 2:
 			return(ins in ["jump","radar","uradar","ulocate","status","makemarker"])
 		case 3:
@@ -414,6 +416,141 @@ def include_files(file_loc, macro_list, macro_indices, include_list):
 			output_code = []
 			macro_split(input_code, macro_list, macro_indices, output_code)
 
+def handle_const_op(input, output, const_var_list):
+	for line in input:
+		parsed_line = parse_line(line)
+		output_line = ""
+		if(parsed_line[0] == "cop"):
+			arg_len_check(parsed_line, 3)
+			if(len(parsed_line) >= 5):
+				input1 = str(const_op_replace(parsed_line[3], const_var_list, parsed_line[0], 3))
+				input2 = str(const_op_replace(parsed_line[4], const_var_list, parsed_line[0], 4))
+				input1 = input1 if (input1 != "true") else "1"
+				input1 = input1 if (input1 != "false") else "0"
+				input2 = input2 if (input2 != "true") else "1"
+				input2 = input2 if (input2 != "false") else "0"
+				if(is_number(input1) and is_number(input2)):
+					const_var_list[parsed_line[2]] = float(process_const_op(parsed_line[1], float(input1), float(input2)))
+				else:
+					WARNING("Attempted to use undefined input for 'cop', reverting to 'op'")
+					output.append(line[1:])
+			else:
+				input1 = str(const_op_replace(parsed_line[3], const_var_list, parsed_line[0], 3))
+				input1 = input1 if (input1 != "true") else 1
+				input1 = input1 if (input1 != "false") else 0
+				if(is_number(input1)):
+					const_var_list[parsed_line[2]] = float(process_const_op(parsed_line[1], float(input1), 0))
+				else:
+					WARNING("Attempted to use undefined input for 'cop', reverting to 'op'")
+					output.append(line[1:])
+		else:
+			i = 0
+			while True:
+				word = parsed_line[i]
+				output_line += str(const_op_replace(word, const_var_list, parsed_line[0], i)) + " "
+				i += 1
+				if(i >= len(parsed_line)):
+					output.append(output_line)
+					break
+
+
+def const_op_replace(input, const_var_list, instruction, index):
+	if(is_variable(instruction, input, index)):
+		if input in const_var_list:
+			return(const_var_list[input])
+		else:
+			return(input)
+	else:
+		return(input)
+
+def process_const_op(operation, a, b):
+	match operation:
+		case "add":
+			return(a + b)
+		case "sub":
+			return(a - b)
+		case "mul":
+			return(a * b)
+		case "div":
+			return(a / b)
+		case "idiv":
+			return(a // b)
+		case "mod":
+			return(a % b)
+		case "pow":
+			return(pow(a,b))
+		case "equal":
+			return(a == b)
+		case "notEqual":
+			return(a != b)
+		case "land":
+			return(a and b)
+		case "lessThan":
+			return(a < b)
+		case "lessThanEq":
+			return(a <= b)
+		case "greaterThan":
+			return(a > b)
+		case "greaterThanEq":
+			return(a >= b)
+		case "strictEqual":
+			return(a == b)
+		case "shl":
+			return(int(a) << int(b))
+		case "shr":
+			return(int(a) >> int(b))
+		case "or":
+			return(int(a) | int(b))
+		case "and":
+			return(int(a) & int(b))
+		case "xor":
+			return(int(a) ^ int(b))
+		case "not":
+			return(~int(a))
+		case "max":
+			return(max(a, b))
+		case "min":
+			return(min(a, b))
+		case "angle":
+			return(math.degrees(math.atan2(a, b)))
+		case "angleDiff":
+			a = ((a % 360) + 360) % 360
+			b = ((b % 360) + 360) % 360
+			return(min(a - b + 360 if (a - b) < 0 else a - b, b - a + 360 if (b - a) < 0 else b - a))
+		case "len":
+			return(math.hypot(a, b))
+		case "noise":
+			WARNING("No noise idiot")
+			return(0)
+		case "abs":
+			return(abs(a))
+		case "log":
+			return(math.log(a))
+		case "log10":
+			return(math.log10(a))
+		case "floor":
+			return(math.floor(a))
+		case "ceil":
+			return(math.ceil(a))
+		case "sqrt":
+			return(math.sqrt(a))
+		case "rand":
+			return(random.uniform(0,a))
+		case "sin":
+			return(math.sin(a))
+		case "cos":
+			return(math.cos(a))
+		case "tan":
+			return(math.tan(a))
+		case "asin":
+			return(math.asin(a))
+		case "acos":
+			return(math.acos(a))
+		case "atan":
+			return(math.atan(a))
+		case _:
+			ERROR("Unknown operation " + operation)
+
 handle_args(sys.argv[1:])
 try:
 	input_file = open(SOURCE_FILE, "r")
@@ -453,6 +590,20 @@ output_code = []
 
 handle_macros(input_code, macro_indices, macro_list, output_code)
 
+input_code = output_code
+output_code = []
+const_var_list = {}
+
+handle_const_op(input_code, output_code, const_var_list)
+
+input_code = output_code
+output_code = []
+
+for line in input_code:
+	line_output = ""
+	for word in parse_line(line):
+		line_output += word.lstrip("$") + " "
+	output_code.append(line_output)
 
 
 file_output = ""

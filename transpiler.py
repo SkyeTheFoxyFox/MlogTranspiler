@@ -224,7 +224,7 @@ def instruction_printf(line, output):
 	index = 0
 	while True:
 		char = format_string[index]
-		if(char == "{"):
+		if(char == "{" and format_string[index-1] != "\\"):
 			output_string += "{"
 			variable_string = ""
 			while True:
@@ -241,7 +241,7 @@ def instruction_printf(line, output):
 			if(variable_string == ""):
 				ERROR("Variable not included from printf")
 			var_list.append(variable_string)
-		else:
+		elif(char != "\\" or (char == "\\" and format_string[index-1] == "\\")):
 			output_string += char
 		index += 1
 		if(index >= len(format_string)):

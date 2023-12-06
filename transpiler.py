@@ -218,27 +218,37 @@ def instruction_printf(line, output):
 	if(not is_string(line[1])):
 		ERROR("Instruction \"printf\" expected string, got \"%s\"" % line[1])
 	format_string = line[1][1:len(line[1])-1]
-	current_var = 2
-	temp_string = ""
-	i = 0
-	while(True):
-		char = format_string[i]
-		if(char == '%' and format_string[i+1] in "dsfc"):
-			if(current_var >= len(line)):
-				ERROR("Instruction \"printf\" expected more variables")
-			if(temp_string != ""):
-				output.append('print "%s"' % temp_string)
-			temp_string = ""
-			output.append("print %s" % line[current_var])
-			current_var += 1
-			i += 1
+	output_string = ""
+	var_list = []
+	current_variable_index = 0
+	index = 0
+	while True:
+		char = format_string[index]
+		if(char == "{"):
+			output_string += "{"
+			variable_string = ""
+			while True:
+				index += 1
+				var_char = format_string[index]
+				if(index >= len(format_string)):
+					ERROR("Printf variable not closed")
+				elif(var_char == "}"):
+					output_string += str(current_variable_index) + "}"
+					current_variable_index += 1
+					break
+				else:
+					variable_string += var_char
+			if(variable_string == ""):
+				ERROR("Variable not included from printf")
+			var_list.append(variable_string)
 		else:
-			temp_string += char
-		i += 1
-		if(i >= len(format_string)):
+			output_string += char
+		index += 1
+		if(index >= len(format_string)):
 			break
-	if(temp_string != ""):
-		output.append('print "%s"' % temp_string)
+	output.append(f'print "{output_string}"')
+	for variable in var_list:
+		output.append(f"format {variable}")	
 
 def is_variable(instruction, value, index):
 	return(not is_instruction_value(instruction, index) and not is_number(value) and not is_string(value) and not is_enum(value) and not is_const(value))

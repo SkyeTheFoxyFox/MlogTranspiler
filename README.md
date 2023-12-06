@@ -15,4 +15,4 @@ Arrays are an easy way to utilize counter arrays, and can be defined with `arr d
 It also adds a few smaller instructions:
 
 `swrite` writes a constant string to a memcell as ascii values.
-`printf` converts a formatted string into a series of prints.
+`printf` converts a formatted string (ex. "var: {var}") into a `print` with a series of `format`s.

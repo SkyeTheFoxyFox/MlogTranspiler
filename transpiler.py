@@ -16,6 +16,16 @@ try:
 except ImportError:
     NO_COPY = True
 
+class CodeDefinition:
+	def __init__(self, name, code, mac_only, fun_only, arg_count):
+		self.name = name
+		self.code = code
+		self.index = 0
+		self.mac_only = mac_only
+		self.fun_only = fun_only
+		self.argument_count = arg_count
+		self.argument_out_list = [0 for x in range(arg_count)]
+
 def ERROR(message):
 	print("ERROR:", message)
 	input_file.close()
@@ -123,10 +133,12 @@ def split_line(line):
 	line_out.append(word_output)
 	return(line_out)
 
-def handle_basic_instructions(input, output, current_file):
+def handle_basic_instructions(input, output, current_file, called_functions_list, def_list):
 	for line in input:
 		parsed_line = parse_line(line)
 		match parsed_line[0]:
+			case "fun":
+				instruction_fun(parsed_line, output, called_functions_list, def_list)
 			case "arr":
 				instruction_arr(parsed_line, output)
 			case "swrite":
@@ -149,7 +161,7 @@ def instruction_arr(line, output):
 				arr_len = int(line[3])
 			except ValueError:
 				ERROR("Instruction \"arr define\" expected integer length, got \"%s\"" % line[3])
-			for i in range():
+			for i in range(arr_len):
 				output.append("set _" + line[2] + "_var" + str(i) + " _" + line[2] + "_input_")
 				output.append("set _" + line[2] + "_output_ _" + line[2] + "_var" + str(i))
 				output.append("set @counter _" + line[2] + "_return_pointer_")
@@ -298,83 +310,232 @@ def is_enum(value):
 def is_const(value):
 	return(value in ["true", "false", "null"])
 
-def macro_split(input, macros, macro_indices, output):
-	is_macro = False
-	current_macro = ""
+def is_output(ins, subins, index):
+	match(index):
+		case 0:
+			return(False)
+		case 1:
+			return(ins in ["read", "getlink", "sensor", "set", "packcolor", "getblock", "spawn", "getflag"])
+		case 2:
+			return(ins in ["op", "lookup", "fetch"])
+		case 3:
+			return(ins in ["message"])
+		case 5:
+			return(ins in ["ulocate"])
+		case 6:
+			return(ins in ["uradar", "ulocate"])
+		case 7:
+			return(ins in ["radar", "ulocate"])
+		case 8:
+			return(ins in ["ulocate"])
+		case _:
+			if(ins == "ucontrol"):
+				if(subins == "getBlock"):
+					return(index >= 4 and index <= 6)
+				elif(subins == "within"):
+					return(index == 5)
+				else:
+					return(False)
+			else:
+				return(False)
+
+def def_get(input, defs):
+	is_def = False
+	mac_only = False
+	fun_only = False
+	current_def = ""
+	arguments = []
 	for line in input:
 		parsed_line = parse_line(line)
 
-		if(parsed_line[0] == "mac" and parsed_line[1] == "end"):
-			is_macro = False
+		if(parsed_line[0] == "def" and parsed_line[1] == "end"):
+			is_def = False
 
-		elif(is_macro):
+		elif(is_def):
 			output_line = ""
 			for word in parsed_line:
 				if word in arguments:
-					output_line = output_line + "_macvar_" + str(arguments.index(word)) + " "
+					output_line = output_line + "_defvar_" + str(arguments.index(word)) + " "
 				else:
 					output_line = output_line + word + " "
-			macros[current_macro].append(output_line)
+			defs[current_def].code.append(output_line)
 
-		elif(parsed_line[0] == "mac" and parsed_line[1] == "define"):
-			if(parsed_line[2] in macros):
-				ERROR("Macro \"" + parsed_line[2] + "\" already defined")
+		elif(parsed_line[0] == "def"):
+			if(parsed_line[1] == "mac"):
+				if(parsed_line[2] in defs):
+					ERROR("Definition \"" + parsed_line[1] + "\" already defined")
+				mac_only = True
+				current_def = parsed_line[2]
+				arguments = parsed_line[3:]
+			elif(parsed_line[1] == "fun"):
+				if(parsed_line[2] in defs):
+					ERROR("Definition \"" + parsed_line[1] + "\" already defined")
+				fun_only = True
+				current_def = parsed_line[2]
+				arguments = parsed_line[3:]
+			elif(parsed_line[1] in defs):
+				ERROR("Definition \"" + parsed_line[1] + "\" already defined")
+			else:
+				current_def = parsed_line[1]
+				arguments = parsed_line[2:]
+			is_def = True
+			defs[current_def] = CodeDefinition(current_def, [], mac_only, fun_only, len(arguments))
 
-			is_macro = True
-			current_macro = parsed_line[2]
-			macros[current_macro] = []
-			macro_indices[current_macro] = 0
-			arguments = parsed_line[3:]
+def def_split(input, defs, output):
+	is_def = False
+	mac_only = False
+	fun_only = False
+	current_def = ""
+	arguments = []
+	for line in input:
+		parsed_line = parse_line(line)
+
+		if(parsed_line[0] == "def" and parsed_line[1] == "end"):
+			is_def = False
+
+		elif(is_def):
+			output_line = ""
+			for word in parsed_line:
+				if word in arguments:
+					output_line = output_line + "_defvar_" + str(arguments.index(word)) + " "
+				else:
+					output_line = output_line + word + " "
+			defs[current_def].code.append(output_line)
+
+		elif(parsed_line[0] == "def"):
+			if(parsed_line[1] == "mac"):
+				if(parsed_line[2] in defs):
+					ERROR("Definition \"" + parsed_line[1] + "\" already defined")
+				mac_only = True
+				current_def = parsed_line[2]
+				arguments = parsed_line[3:]
+			elif(parsed_line[1] == "fun"):
+				if(parsed_line[2] in defs):
+					ERROR("Definition \"" + parsed_line[1] + "\" already defined")
+				fun_only = True
+				current_def = parsed_line[2]
+				arguments = parsed_line[3:]
+			elif(parsed_line[1] in defs):
+				ERROR("Definition \"" + parsed_line[1] + "\" already defined")
+			else:
+				current_def = parsed_line[1]
+				arguments = parsed_line[2:]
+			is_def = True
+			defs[current_def] = CodeDefinition(current_def, [], mac_only, fun_only, len(arguments))
 
 		else:
 			output.append(update_line(line))
 
-def macro_insert(macro, arguments, macro_indices, macro_list, chain_list, output):
+def macro_insert(macro, arguments, macro_list, chain_list, output):
+	if(macro_list[macro].fun_only == True):
+		ERROR(f"Definition \"{macro}\" can't be called as a macro")
 	chain_list.append(macro)
 	if(macro not in macro_list):
-		ERROR("macro \"" + macro + "\" undefined")
-	for line in macro_list[macro]:
+		ERROR("Macro \"" + macro + "\" undefined")
+	for line in macro_list[macro].code:
 		parsed_line = parse_line(line)
 		output_line = ""
 		for index in range(len(parsed_line)):
 			word = parsed_line[index]
-			if "_macvar_" in word:
+			if "_defvar_" in word:
 				arg_index = int(word[8:])
 				if(len(arguments) <= arg_index):
 					ERROR("Macro \"" + macro + "\" needs more arguments")
 				output_line += arguments[arg_index] + " "
 			elif(word.endswith(":")):
-				output_line += "_%s_%d_%s" % (macro, macro_indices[macro], word)
+				output_line += "_%s_%d_%s" % (macro, macro_list[macro].index, word)
 			elif(parsed_line[0] == "jump" and index == 1):
-				output_line += "_%s_%d_%s " % (macro, macro_indices[macro], word)
+				output_line += "_%s_%d_%s " % (macro, macro_list[macro].index, word)
 			else:
 				if(word.startswith("$")):
 					output_line += word[1:] + " "
 				elif(is_variable(parsed_line[0], word, index) and ENABLE_SCOPE):
-					output_line += "_%s_%d_%s " % (macro, macro_indices[macro], word)
+					output_line += "_%s_%d_%s " % (macro, macro_list[macro].index, word)
 				else:
 					output_line += word + " "
 		parsed_line = parse_line(output_line.strip("\t "))
 		if(parsed_line[0] == "mac"):
 			if(parsed_line[1] not in chain_list):
-				macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output)
+				macro_insert(parsed_line[1], parsed_line[2:], macro_list, chain_list, output)
 			else:
 				WARNING("macro \"" + parsed_line[1] + "\" tried to call itself... skipping")
 		else:
 			output.append(update_line(output_line))
 
-	macro_indices[macro] = macro_indices[macro] + 1
+	macro_list[macro].index += 1
 	chain_list.pop()
 
-def handle_macros(input, macro_indices, macro_list, output):
+def handle_macros(input, def_list, output):
 	chain_list = []
 
 	for line in input:
 		parsed_line = parse_line(line)
 		if(parsed_line[0] == "mac"):
-			macro_insert(parsed_line[1], parsed_line[2:], macro_indices, macro_list, chain_list, output)
+			macro_insert(parsed_line[1], parsed_line[2:], def_list, chain_list, output)
 		else:
 			output.append(update_line(line))
+
+def instruction_fun(parsed_line, output, called_functions_list, def_list):
+	if(parsed_line[1] not in called_functions_list):
+		called_functions_list.append(parsed_line[1])
+	call_function(parsed_line[1], parsed_line[2:], output, def_list)
+
+def function_get_io(def_list):
+	for function in def_list:
+		for line in def_list[function].code:
+			parsed_line = parse_line(line)
+			for i in range(len(parsed_line)):
+				word = parsed_line[i]
+				if "_defvar_" in word:
+					arg_index = int(word[8:])
+					def_list[function].argument_out_list[arg_index] = is_output(parsed_line[0], parsed_line[1], i)
+
+def handle_functions(code, def_list, called_functions_list):
+	code.append("end")
+	for function in called_functions_list:
+		add_function(function, def_list, code)
+
+def call_function(function, arguments, output, def_list):
+	if(function not in def_list):
+		ERROR(f"Function \"{function}\" undefined")
+	if(def_list[function].mac_only):
+		ERROR(f"Definition \"{function}\" can't be called as a function")
+	for i in range(len(arguments)):
+		if(def_list[function].argument_out_list[i] == False):
+			output.append(f"set $_fun_{function}_arg{i} {arguments[i]}")
+	output.append(f"op add $_fun_{function}_callback @counter 1")
+	output.append(f"jump $_fun_{function} always")
+	for i in range(len(arguments)):
+		if(def_list[function].argument_out_list[i] == True and not (is_number(arguments[i]) or is_string(arguments[i]) or is_enum(arguments[i]) or is_const(arguments[i]))):
+			output.append(f"set {arguments[i]} $_fun_{function}_arg{i}")
+
+def add_function(function, def_list, output):
+	output.append(f"_fun_{function}:")
+	for line in def_list[function].code:
+		parsed_line = parse_line(line)
+		output_line = ""
+		for index in range(len(parsed_line)):
+			word = parsed_line[index]
+			if "_defvar_" in word:
+				arg_index = int(word[8:])
+				output_line += f"_fun_{function}_arg{arg_index} "
+			elif(word.endswith(":")):
+				output_line += f"_{function}_{word} "
+			elif(parsed_line[0] == "jump" and index == 1):
+				output_line += f"_{function}_{word} "
+			else:
+				if(word.startswith("$")):
+					output_line += word[1:] + " "
+				elif(is_variable(parsed_line[0], word, index) and ENABLE_SCOPE):
+					output_line += f"_{function}_{word} "
+				else:
+					output_line += word + " "
+		if(parsed_line[0] == "mac"):
+			chain_list = []
+			macro_insert(parsed_line[1], parsed_line[2:], def_list, chain_list, output)
+		else:
+			output.append(update_line(output_line))
+	output.append(f"set @counter _fun_{function}_callback")
 
 def find_includes(input, include_list):
 	global SOURCE_FILE
@@ -415,7 +576,7 @@ def instruction_const(line, const_list):
 		ERROR("Attempted to redefine constant \"%s\"" % line[1])
 	const_list[line[1]] = line[2:]
 
-def include_files(file_loc, macro_list, macro_indices, include_list):
+def include_files(file_loc, def_list, include_list):
 	global SOURCE_FILE
 	for file_loc in include_list:
 		if(file_loc != SOURCE_FILE):
@@ -424,7 +585,7 @@ def include_files(file_loc, macro_list, macro_indices, include_list):
 			handle_basic_instructions(parse_file(file), output_code, file_loc)
 			input_code = output_code
 			output_code = []
-			macro_split(input_code, macro_list, macro_indices, output_code)
+			def_split(input_code, def_list, output_code)
 
 def handle_const_op(input, output, const_var_list):
 	for line in input:
@@ -462,7 +623,6 @@ def handle_const_op(input, output, const_var_list):
 				if(i >= len(parsed_line)):
 					output.append(output_line)
 					break
-
 
 def const_op_replace(input, const_var_list, instruction, index):
 	if(is_variable(instruction, input, index)):
@@ -578,30 +738,35 @@ find_includes(input_code, include_list)
 find_consts(include_list, const_list)
 
 global_const_list = const_list
+called_functions_list = []
 
-handle_basic_instructions(input_code, output_code, SOURCE_FILE)
+temp_def_list = {}
+def_get(input_code, temp_def_list)
+function_get_io(temp_def_list)
 
-
-
-input_code = output_code
-output_code = []
-macro_list = {}
-macro_indices = {}
-
-macro_split(input_code, macro_list, macro_indices, output_code)
-
-
-include_files(include_list, macro_list, macro_indices, include_list)
+handle_basic_instructions(input_code, output_code, SOURCE_FILE, called_functions_list, temp_def_list)
 
 
 
 input_code = output_code
 output_code = []
+def_list = {}
 
-handle_macros(input_code, macro_indices, macro_list, output_code)
+def_split(input_code, def_list, output_code)
+function_get_io(def_list)
+
+include_files(include_list, def_list, include_list)
 
 input_code = output_code
 output_code = []
+
+handle_macros(input_code, def_list, output_code)
+
+input_code = output_code
+output_code = []
+
+handle_functions(input_code, def_list, called_functions_list)
+
 const_var_list = {}
 
 handle_const_op(input_code, output_code, const_var_list)

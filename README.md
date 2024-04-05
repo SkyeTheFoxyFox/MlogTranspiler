@@ -1,3 +1,9 @@
+# warning
+
+it's not fully functional, functions don't play well with macros, i'll rewrite it all once i find the time and motivation
+
+# explination
+
 An mlog transpiler with support for macros, functions, and simple counter arrays, as well as a bunch of smaller things.
 
 The program takes some arguments, `-src` for the input file, `-out` for the output file, `-copy` to enable copying to clipboard, and `-no_scope` to disable scope. Everything but the input file is optional.

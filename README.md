@@ -1,8 +1,8 @@
-# warning
+# Warning
 
-it's not fully functional, functions don't play well with macros, i'll rewrite it all once i find the time and motivation
+This transpiler is not fully functional: functions do not play well with macros. I'll be able to rewrite it once I can find the time and motivation.
 
-# explination
+# Explanation
 
 An mlog transpiler with support for macros, functions, and simple counter arrays, as well as a bunch of smaller things.
 

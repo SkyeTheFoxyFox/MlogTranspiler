@@ -4,7 +4,7 @@ This transpiler is not fully functional: functions do not play well with macros.
 
 # Explanation
 
-A mlog transpiler with support for macros, functions, and simple counter arrays, as well as a bunch of smaller things.
+An mlog transpiler with support for macros, functions, and simple counter arrays, as well as a bunch of smaller things.
 
 The program takes some arguments, `-src` for the input file, `-out` for the output file, `-copy` to enable copying to clipboard, and `-no_scope` to disable scope. Everything but the input file is optional.
 
